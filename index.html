@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GIBE III 400kV & 15kV Switchgear Log Sheet</title>
+    <!-- Tailwind CSS for modern design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- Libraries for Excel and PDF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans text-gray-900">
+
+    <!-- 1. LOGIN PAGE MODAL -->
+    <div id="loginSection" class="fixed inset-0 bg-gray-900 bg-opacity-70 flex justify-center items-center z-50">
+        <div class="bg-white p-8 rounded-lg shadow-2xl w-96 text-center">
+            <h2 class="text-2xl font-bold text-blue-800 mb-2">ETHIOPIAN ELECTRIC POWER</h2>
+            <h3 class="text-sm font-semibold mb-6">GIBE III 400kV Outgoing Line Login</h3>
+            <div class="mb-4">
+                <input type="email" id="loginEmail" placeholder="ኢሜይል (Email)" class="w-full p-2 border rounded focus:outline-blue-500">
+            </div>
+            <div class="mb-6">
+                <input type="password" id="loginPassword" placeholder="የይለፍ ቃል (Password)" class="w-full p-2 border rounded focus:outline-blue-500">
+            </div>
+            <button onclick="loginUser()" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded font-bold transition">ግባ (Login)</button>
+            <p id="loginError" class="text-red-500 text-sm mt-3 hidden">የተሳሳተ መለያ ተጠቅመዋል!</p>
+        </div>
+    </div>
+
+    <!-- MAIN APP INTERFACE (Hidden until login) -->
+    <div id="mainApp" class="hidden container mx-auto p-4">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center bg-white p-4 shadow rounded-lg mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-blue-900">ETHIOPIAN ELECTRIC POWER</h1>
+                <p class="text-sm text-gray-600">GIBE III SWITCHYARD 400KV LOG SHEET</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="userBadge" class="bg-green-100 text-green-800 text-sm font-semibold px-3 py-1 rounded-full"></span>
+                <button onclick="logoutUser()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm font-bold">ውጣ (Logout)</button>
+            </div>
+        </div>
+
+        <!-- Controls Section (Search, Export, Admin Controls) -->
+        <div class="bg-white p-4 shadow rounded-lg mb-6 flex flex-wrap gap-4 items-center justify-between">
+            <!-- 6. Search Box -->
+            <div class="flex items-center space-x-2">
+                <input type="date" id="searchDate" class="p-2 border rounded">
+                <button onclick="searchDataByDate()" class="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700">ፈልግ (Search)</button>
+            </div>
+
+            <!-- 2, 3, 4. Export & Print Buttons -->
+            <div class="flex flex-wrap gap-2">
+                <button onclick="window.print()" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800 font-bold">🖨️ Print Report</button>
+                <button onclick="exportToPDF()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 font-bold">📄 Export PDF</button>
+                <button onclick="exportToExcel()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-bold">📊 Export Excel</button>
+            </div>
+        </div>
+
+        <!-- ⚠️ LOGSHEET FORM -->
+        <form id="logSheetForm" onsubmit="submitToFirebase(event)">
+            <div class="bg-white p-4 shadow rounded-lg mb-6">
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block font-semibold">የኢትዮጵያ ቀን (Date E.C):</label>
+                        <input type="text" id="dateEC" placeholder="ቅዱስ/ወር/ዓመት" class="w-full p-2 border rounded" required>
+                    </div>
+                    <div>
+                        <label class="block font-semibold">G.C Date:</label>
+                        <input type="date" id="dateGC" class="w-full p-2 border rounded" required>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 1:00 to 24:00 Hourly Rows -->
+            <div class="bg-white p-4 shadow rounded-lg overflow-x-auto mb-6">
+                <h3 class="text-lg font-bold mb-3 border-b pb-2">1. GIBE III 400kV OUTGOING LINE PARAMETERS (Hourly Readings)</h3>
+                <table class="w-full text-left border-collapse border border-gray-300 text-xs">
+                    <thead>
+                        <tr class="bg-gray-200 text-center">
+                            <th class="border p-2">Time Hrs</th>
+                            <th class="border p-2">Busbar V (kV)</th>
+                            <th class="border p-2">Freq (Hz)</th>
+                            <th class="border p-2">SODO 1 Active (MW)</th>
+                            <th class="border p-2">SODO 1 Reactive (MVAR)</th>
+                            <th class="border p-2">SODO 2 Active (MW)</th>
+                            <th class="border p-2">SODO 2 Reactive (MVAR)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hourlyTableBody">
+                        <!-- Rows will be injected by JavaScript automatically from 1:00 to 24:00 (0:00) -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Energy Meter Section (Calculations) -->
+            <div class="bg-white p-4 shadow rounded-lg mb-6">
+                <h3 class="text-lg font-bold mb-3 border-b pb-2">ENERGY METER READING (SODO LINE 1)</h3>
+                <div class="grid grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold">Present Reading (MWH)</label>
+                        <input type="number" id="s1_pres_mwh" oninput="calculateDifference()" class="w-full p-2 border rounded bg-yellow-50">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold">Preceding Reading (MWH)</label>
+                        <input type="number" id="s1_prec_mwh" class="w-full p-2 border rounded bg-gray-100" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold">Difference</label>
+                        <input type="number" id="s1_diff_mwh" class="w-full p-2 border rounded bg-blue-50 font-bold" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold">Today's Out Put</label>
+                        <input type="number" id="s1_output_mwh" class="w-full p-2 border rounded bg-green-50" readonly>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 7. Admin Only Buttons & Submit -->
+            <div class="bg-white p-4 shadow rounded-lg flex justify-between items-center">
+                <p id="adminStatusText" class="text-sm font-semibold text-gray-500">ዳታ ለመላክ አድሚን መሆን አለብዎት።</p>
+                <div class="space-x-2">
+                    <button type="submit" id="submitBtn" class="bg-blue-600 text-white px-6 py-3 rounded font-bold hover:bg-blue-700 hidden">መረጃውን አስቀምጥ (Submit to Firebase)</button>
+                    <!-- 5. Edit/Delete Section for Admin -->
+                    <button type="button" id="deleteBtn" onclick="deleteCurrentRecord()" class="bg-red-600 text-white px-4 py-3 rounded font-bold hover:bg-red-700 hidden">ሰርዝ (Delete Record)</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- App JavaScript Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
